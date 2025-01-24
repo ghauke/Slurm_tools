@@ -49,7 +49,7 @@ export printheader=1
 export month="last"
 
 # Process options
-while getopts "p:u:g:s:e:r:m:W:cwGhn" options; do
+while getopts "p:u:g:s:e:r:m:W:cylwGhn" options; do
 	case $options in
 		p )     export partition=$OPTARG
 			echo Print only accounting in Slurm partition $OPTARG
@@ -89,6 +89,16 @@ while getopts "p:u:g:s:e:r:m:W:cwGhn" options; do
 			echo Select current month from $start_time until $end_time
 			REPORT_NAME=Current_month
 			;;
+                y )     export start_time=`date +0101%y`
+                        export end_time=`date +%m%d%y`
+                        echo Select current month from $start_time until $end_time
+                        REPORT_NAME=Current_year
+                        ;;
+                l )     export start_time=`date -d "last year" +0101%y`
+                        export end_time=`date +0101%y`
+                        echo Select current month from $start_time until $end_time
+                        REPORT_NAME=Last_year
+                        ;;
 		w )     export start_time=`date -d 'last week' +%m%d%y`
 			export end_time=`date +%m%d%y`
 			echo Select last week from $start_time until $end_time
@@ -167,6 +177,11 @@ then
 		exit -1
 	fi
 fi
+
+
+#echo "start_time: $start_time"
+#echo "end_time: $end_time"
+#exit 0
 
 #####################################################################################
 #
