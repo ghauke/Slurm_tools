@@ -236,9 +236,9 @@ then
 		echo "Group name selected: $groupname" >> $REPORT
 		selection="--group $groupname $selection"
 	fi
-	echo "                             Wallclock          Average Average Average  Average" >> $REPORT
-	echo "Username    Group    #jobs       hours  Percent #nodes  #cpus   runtime  q-hours  Full name" >> $REPORT
-	echo "--------    -----  ------- -----------  ------- ------- ------- -------  -------  ---------" >> $REPORT
+	echo "                             Wallclock          Average   Average Average Average Average" >> $REPORT
+	echo "Username    Group    #jobs       hours  Percent #nodes      #cpus runtime MaxTime q-hours Full name" >> $REPORT
+	echo "--------    -----  ------- -----------  ------- ------- --------- ------- ------- ------- ---------" >> $REPORT
 else
 	# Group statistics
 	echo >> $REPORT
@@ -249,9 +249,9 @@ else
 	fi
 	echo Usage sorted by top groups: >> $REPORT
 	# echo "Jobs completed/terminated between date/time $start_time and $end_time"
-	echo "                    Wallclock          Average Average Average Average" >> $REPORT
-	echo "   Group    #jobs       hours  Percent #nodes   #cpus  runtime q-hours" >> $REPORT
-	echo "   -----  ------- -----------  ------- ------- ------- ------- -------" >> $REPORT
+	echo "                    Wallclock          Average   Average Average Average Average" >> $REPORT
+	echo "   Group    #jobs       hours  Percent  #nodes     #cpus runtime MaxTime q-hours" >> $REPORT
+	echo "   -----  ------- -----------  ------- ------- --------- ------- ------- -------" >> $REPORT
 fi
 
 #####################################################################################
@@ -271,7 +271,7 @@ fi
 # Report time in seconds:
 export SLURM_TIME_FORMAT="%s"
 # Request job data
-export FORMAT="JobID,User${ulen},Group${glen},Partition,AllocNodes,AllocCPUS,Submit,Eligible,Start,End,CPUTimeRAW,State,WorkDir"
+export FORMAT="JobID,User${ulen},Group${glen},Partition,AllocNodes,AllocCPUS,Submit,Eligible,Start,End,CPUTimeRAW,State,WorkDir,TimelimitRaw"
 # Request job states: CAncelled, ReQueued, CompleteD, Failed, TimeOut, PReempted, Out_Of_Memory
 export STATE="ca,rq,cd,f,to,pr,oom"
 
@@ -314,8 +314,9 @@ BEGIN {
 	wait	= start - eligible
 	if (wait < 0) wait = 0	# Should not happen
 	jobworkdir	= $13	# Job working directory
+	jobtimelimit	= $14	# Job time limit in minutes
 
-	jobnodes = nodec #TODO Hauke: Reserved wall clock timet
+	jobnodes = nodect #TODO Hauke: Reserved wall clock timet
 	# For accounting by number of CPU cores in stead of number of nodes,
 	# uncomment the following line:
 	nodect = total_ncpus
@@ -323,6 +324,7 @@ BEGIN {
 	# TOTAL accounting
 	totaljobs++
 	totalnodes += jobnodes
+	totaltimelimit += jobtimelimit
 	totalwait += wait
 	cpunodesecs += nodect*cput
 	wallnodesecs += nodect*wall
@@ -339,6 +341,7 @@ BEGIN {
 	usergroup[user,group] = group
 	jobs[user,group]++
 	nodes[user,group] += jobnodes
+	timelimit[user,group] += jobtimelimit
 	cpunodes[user,group] += nodect*cput
 	wallnodes[user,group] += nodect*wall
 	wallcpu[user,group] += wall
@@ -350,6 +353,7 @@ BEGIN {
 	groupname[group]=group
 	gr_jobs[group]++
 	gr_nodes[group] += jobnodes
+	gr_timelimit[group] += jobtimelimit
 	gr_cpunodes[group] += nodect*cput
 	gr_wallnodes[group] += nodect*wall
 	gr_wallcpu[group] += wall
@@ -361,11 +365,13 @@ BEGIN {
 	if (totaljobs > 0) {
 		totalwaitaverage = totalwait/totaljobs
 		totalwallaverage = wallsecs/totaljobs
+		totaltimelimitaverage = totaltimelimit/totaljobs
 		totalnodesaverage = totalnodes/totaljobs
 	}
 	else {
 		totalwaitaverage = 0
 		totalwallaverage = 0
+		totaltimelimitaverage = 0
 		totalnodesaverage = 0
 	}
 	if (wallsecs > 0)
@@ -385,10 +391,11 @@ BEGIN {
 	if (ALLGROUPS == 0) {
 
 		# Print format
-		format = "%8.8s %8.8s %8d  %10.1f  %7.2f %7.2f %7.2f %7.2f %7.2f  %s\n"
+		format = "%8.8s %8.8s %8d  %10.1f  %7.2f %7.2f %9.2f %7.2f %7.2f %7.2f  %s\n"
 		groupjobs = 0
 		groupnodes = 0
 		grouphours = 0
+		grouptimelimit = 0
 		for (ug in usernamegroup) {
 			if (length(groupselect) > 0 && usergroup[ug] != groupselect) continue
 			if (wallnodehours > 0 && jobs[ug] > 0 && wallcpu[ug] > 0 && nodes[ug] > 0)
@@ -399,31 +406,33 @@ BEGIN {
 				nodes[ug]/jobs[ug],
 				wallnodes[ug]/wallcpu[ug],
 				wallcpu[ug]/jobs[ug]/3600,
+				timelimit[ug]/jobs[ug]/60,
 				waittime[ug]/jobs[ug]/3600,
 				fullnamegroup[ug])
 			groupjobs += jobs[ug]
 			groupnodes += nodes[ug]
 			groupnodehours += wallnodes[ug]/3600
 			grouphours += wallcpu[ug]/3600
+			grouptimelimit += timelimit[ug]/60
 			groupwait += waittime[ug]
 			usercount++
 		}
 		# Print out total usage
 		totalusers = "Number of users: " usercount
 		printf(format, "TOTAL", "(All)", totaljobs, wallnodehours, 100,
-			totalnodesaverage, nodesaverage, totalwallaverage/3600, totalwaitaverage/3600, totalusers)
+			totalnodesaverage, nodesaverage, totalwallaverage/3600, totaltimelimitaverage/60, totalwaitaverage/3600, totalusers)
 		# Print out group usage
 		if (length(groupselect) > 0 && groupjobs > 0 && wallnodehours > 0 && grouphours > 0 && groupnodes > 0)
 			printf(format,
 				"GROUP", groupselect, groupjobs, groupnodehours,
 				100*groupnodehours/wallnodehours, groupnodes/groupjobs,
-				groupnodehours/grouphours, grouphours/groupjobs, groupwait/groupjobs/3600, "")
+				groupnodehours/grouphours, grouphours/groupjobs, grouptimelimit/groupjobs/60, groupwait/groupjobs/3600, "")
 	} else {
 
 		# Per-group accounting
 
 		# Print format
-		format = "%8s %8d  %10.1f  %7.2f %7.2f %7.2f %7.2f\n"
+		format = "%8s %8d  %10.1f  %7.2f %7.2f %9.2f %7.2f %7.2f %7.2f\n"
 
 		# Sort arrays by element values:
 		# https://www.gnu.org/software/gawk/manual/html_node/Controlling-Scanning.html
@@ -438,11 +447,12 @@ BEGIN {
 				gr_nodes[group]/gr_jobs[group],
 				gr_wallnodes[group]/gr_wallcpu[group],
 				gr_wallcpu[group]/gr_jobs[group]/3600,
+				gr_timelimit[group]/gr_jobs[group]/60,
 				gr_waittime[group]/gr_jobs[group]/3600)
 		}
 			printf(format, "TOTAL", totaljobs, wallnodehours, 100,
 				totalnodesaverage, nodesaverage,
-				totalwallaverage/3600, totalwaitaverage/3600)
+				totalwallaverage/3600, totaltimelimit/60, totalwaitaverage/3600)
 	}
 		
 } ' | env LC_ALL=C sort -r -n -k $SORTCOLUMN -k 3 -k 1d >> $REPORT
