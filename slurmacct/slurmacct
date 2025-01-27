@@ -185,7 +185,8 @@ fi
 # First report overall statistics including nicely formatted start/end date:
 # Change the date/time format in report header for readibility (formats in "man strftime")
 
-REPORT=${REPORT_PREFIX}${REPORT_NAME}
+#REPORT=${REPORT_PREFIX}${REPORT_NAME}
+REPORT=${REPORT_PREFIX}_${start_time}-${end_time}_${REPORT_NAME}
 
 export SLURM_TIME_FORMAT="%d-%b-%Y_%R"
 
@@ -232,9 +233,9 @@ then
 		echo "Group name selected: $groupname" >> $REPORT
 		selection="--group $groupname $selection"
 	fi
-	echo "                             Wallclock          Average Average" >> $REPORT
-	echo "Username    Group    #jobs       hours  Percent  #cpus  q-hours  Full name" >> $REPORT
-	echo "--------    -----  ------- -----------  ------- ------- -------  ---------" >> $REPORT
+	echo "                             Wallclock          Average Average Average" >> $REPORT
+	echo "Username    Group    #jobs       hours  Percent #nodes  #cpus   q-hours  Full name" >> $REPORT
+	echo "--------    -----  ------- -----------  ------- ------- ------- -------  ---------" >> $REPORT
 else
 	# Group statistics
 	echo >> $REPORT
@@ -245,9 +246,9 @@ else
 	fi
 	echo Usage sorted by top groups: >> $REPORT
 	# echo "Jobs completed/terminated between date/time $start_time and $end_time"
-	echo "                    Wallclock          Average Average" >> $REPORT
-	echo "   Group    #jobs       hours  Percent  #cpus  q-hours" >> $REPORT
-	echo "   -----  ------- -----------  ------- ------- -------" >> $REPORT
+	echo "                    Wallclock          Average Average Average" >> $REPORT
+	echo "   Group    #jobs       hours  Percent #nodes   #cpus  q-hours" >> $REPORT
+	echo "   -----  ------- -----------  ------- ------- ------- -------" >> $REPORT
 fi
 
 #####################################################################################
@@ -311,12 +312,14 @@ BEGIN {
 	if (wait < 0) wait = 0	# Should not happen
 	jobworkdir	= $13	# Job working directory
 
+	jobnodes = nodect #TODO Hauke: Is it really so simple as mentioned below? No other formula adjustments?
 	# For accounting by number of CPU cores in stead of number of nodes,
 	# uncomment the following line:
 	nodect = total_ncpus
 
 	# TOTAL accounting
 	totaljobs++
+	totalnodes += jobnodes
 	totalwait += wait
 	cpunodesecs += nodect*cput
 	wallnodesecs += nodect*wall
@@ -332,6 +335,7 @@ BEGIN {
 	fullnamegroup[user,group] = fullname[user]
 	usergroup[user,group] = group
 	jobs[user,group]++
+	nodes[user,group] += jobnodes
 	cpunodes[user,group] += nodect*cput
 	wallnodes[user,group] += nodect*wall
 	wallcpu[user,group] += wall
@@ -342,6 +346,7 @@ BEGIN {
 	# Group accounting
 	groupname[group]=group
 	gr_jobs[group]++
+	gr_nodes[group] += jobnodes
 	gr_cpunodes[group] += nodect*cput
 	gr_wallnodes[group] += nodect*wall
 	gr_wallcpu[group] += wall
@@ -350,10 +355,14 @@ BEGIN {
 	gr_waittime[group] += wait
 } END {
 	# Some average values
-	if (totaljobs > 0)
+	if (totaljobs > 0) {
 		totalwaitaverage = totalwait/totaljobs
-	else
+		totalnodesaverage = totalnodes/totaljobs
+	}
+	else {
 		totalwaitaverage = 0
+		totalnodesaverage = 0
+	}
 	if (wallsecs > 0)
 		nodesaverage = wallnodesecs/wallsecs
 	else
@@ -371,20 +380,23 @@ BEGIN {
 	if (ALLGROUPS == 0) {
 
 		# Print format
-		format = "%8.8s %8.8s %8d  %10.1f  %7.2f %7.2f %7.2f  %s\n"
+		format = "%8.8s %8.8s %8d  %10.1f  %7.2f %7.2f %7.2f %7.2f  %s\n"
 		groupjobs = 0
+		groupnodes = 0
 		grouphours = 0
 		for (ug in usernamegroup) {
 			if (length(groupselect) > 0 && usergroup[ug] != groupselect) continue
-			if (wallnodehours > 0 && jobs[ug] > 0 && wallcpu[ug] > 0)
+			if (wallnodehours > 0 && jobs[ug] > 0 && wallcpu[ug] > 0 && nodes[ug] > 0)
 				printf(format, usernamegroup[ug], usergroup[ug],
 				jobs[ug], 
 				wallnodes[ug]/3600, 
 				100*wallnodes[ug]/(wallnodehours*3600),
+				nodes[ug]/jobs[ug],
 				wallnodes[ug]/wallcpu[ug],
 				waittime[ug]/jobs[ug]/3600,
 				fullnamegroup[ug])
 			groupjobs += jobs[ug]
+			groupnodes += nodes[ug]
 			groupnodehours += wallnodes[ug]/3600
 			grouphours += wallcpu[ug]/3600
 			groupwait += waittime[ug]
@@ -393,19 +405,19 @@ BEGIN {
 		# Print out total usage
 		totalusers = "Number of users: " usercount
 		printf(format, "TOTAL", "(All)", totaljobs, wallnodehours, 100,
-			nodesaverage, totalwaitaverage/3600, totalusers)
+			totalnodesaverage, nodesaverage, totalwaitaverage/3600, totalusers)
 		# Print out group usage
-		if (length(groupselect) > 0 && groupjobs > 0 && wallnodehours > 0 && grouphours > 0 && groupjobs > 0)
+		if (length(groupselect) > 0 && groupjobs > 0 && wallnodehours > 0 && grouphours > 0 && groupnodes > 0)
 			printf(format,
 				"GROUP", groupselect, groupjobs, groupnodehours,
-				100*groupnodehours/wallnodehours,
+				100*groupnodehours/wallnodehours, groupnodes/groupjobs,
 				groupnodehours/grouphours, groupwait/groupjobs/3600, "")
 	} else {
 
 		# Per-group accounting
 
 		# Print format
-		format = "%8s %8d  %10.1f  %7.2f %7.2f %7.2f\n"
+		format = "%8s %8d  %10.1f  %7.2f %7.2f %7.2f %7.2f\n"
 
 		# Sort arrays by element values:
 		# https://www.gnu.org/software/gawk/manual/html_node/Controlling-Scanning.html
@@ -417,11 +429,13 @@ BEGIN {
 				gr_jobs[group], 
 				gr_wallnodes[group]/3600,
 				100*gr_wallnodes[group]/(3600*wallnodehours),
+				gr_nodes[group]/gr_jobs[group],
 				gr_wallnodes[group]/gr_wallcpu[group],
 				gr_waittime[group]/gr_jobs[group]/3600)
 		}
-		printf(format, "TOTAL", totaljobs, wallnodehours, 100,
-			nodesaverage, totalwaitaverage/3600)
+			printf(format, "TOTAL", totaljobs, wallnodehours, 100,
+				nodesaverage, totalnodesaverage,
+			totalwaitaverage/3600)
 	}
 		
 } ' | env LC_ALL=C sort -r -n -k $SORTCOLUMN -k 3 -k 1d >> $REPORT
