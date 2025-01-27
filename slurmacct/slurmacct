@@ -179,10 +179,6 @@ then
 fi
 
 
-#echo "start_time: $start_time"
-#echo "end_time: $end_time"
-#exit 0
-
 #####################################################################################
 #
 # Print a heading, and make selection for sacct report
