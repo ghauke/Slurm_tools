@@ -452,7 +452,7 @@ BEGIN {
 		}
 			printf(format, "TOTAL", totaljobs, wallnodehours, 100,
 				totalnodesaverage, nodesaverage,
-				totalwallaverage/3600, totaltimelimit/60, totalwaitaverage/3600)
+				totalwallaverage/3600, totaltimelimitaverage/60, totalwaitaverage/3600)
 	}
 		
 } ' | env LC_ALL=C sort -r -n -k $SORTCOLUMN -k 3 -k 1d >> $REPORT
