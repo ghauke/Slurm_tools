@@ -178,7 +178,6 @@ then
 	fi
 fi
 
-
 #####################################################################################
 #
 # Print a heading, and make selection for sacct report
