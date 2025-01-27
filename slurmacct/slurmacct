@@ -209,6 +209,9 @@ then
 	selection="--partition $partition $selection"
 fi
 
+# Wallclock hours are the total for the reserved cpus per job
+# Average runtime describes the job runtime.
+
 if test $ALLGROUPS -eq 0
 then
 	# User statistics
@@ -233,9 +236,9 @@ then
 		echo "Group name selected: $groupname" >> $REPORT
 		selection="--group $groupname $selection"
 	fi
-	echo "                             Wallclock          Average Average Average" >> $REPORT
-	echo "Username    Group    #jobs       hours  Percent #nodes  #cpus   q-hours  Full name" >> $REPORT
-	echo "--------    -----  ------- -----------  ------- ------- ------- -------  ---------" >> $REPORT
+	echo "                             Wallclock          Average Average Average  Average" >> $REPORT
+	echo "Username    Group    #jobs       hours  Percent #nodes  #cpus   runtime  q-hours  Full name" >> $REPORT
+	echo "--------    -----  ------- -----------  ------- ------- ------- -------  -------  ---------" >> $REPORT
 else
 	# Group statistics
 	echo >> $REPORT
@@ -246,9 +249,9 @@ else
 	fi
 	echo Usage sorted by top groups: >> $REPORT
 	# echo "Jobs completed/terminated between date/time $start_time and $end_time"
-	echo "                    Wallclock          Average Average Average" >> $REPORT
-	echo "   Group    #jobs       hours  Percent #nodes   #cpus  q-hours" >> $REPORT
-	echo "   -----  ------- -----------  ------- ------- ------- -------" >> $REPORT
+	echo "                    Wallclock          Average Average Average Average" >> $REPORT
+	echo "   Group    #jobs       hours  Percent #nodes   #cpus  runtime q-hours" >> $REPORT
+	echo "   -----  ------- -----------  ------- ------- ------- ------- -------" >> $REPORT
 fi
 
 #####################################################################################
@@ -312,7 +315,7 @@ BEGIN {
 	if (wait < 0) wait = 0	# Should not happen
 	jobworkdir	= $13	# Job working directory
 
-	jobnodes = nodect #TODO Hauke: Is it really so simple as mentioned below? No other formula adjustments?
+	jobnodes = nodec #TODO Hauke: Reserved wall clock timet
 	# For accounting by number of CPU cores in stead of number of nodes,
 	# uncomment the following line:
 	nodect = total_ncpus
@@ -357,10 +360,12 @@ BEGIN {
 	# Some average values
 	if (totaljobs > 0) {
 		totalwaitaverage = totalwait/totaljobs
+		totalwallaverage = wallsecs/totaljobs
 		totalnodesaverage = totalnodes/totaljobs
 	}
 	else {
 		totalwaitaverage = 0
+		totalwallaverage = 0
 		totalnodesaverage = 0
 	}
 	if (wallsecs > 0)
@@ -380,7 +385,7 @@ BEGIN {
 	if (ALLGROUPS == 0) {
 
 		# Print format
-		format = "%8.8s %8.8s %8d  %10.1f  %7.2f %7.2f %7.2f %7.2f  %s\n"
+		format = "%8.8s %8.8s %8d  %10.1f  %7.2f %7.2f %7.2f %7.2f %7.2f  %s\n"
 		groupjobs = 0
 		groupnodes = 0
 		grouphours = 0
@@ -393,6 +398,7 @@ BEGIN {
 				100*wallnodes[ug]/(wallnodehours*3600),
 				nodes[ug]/jobs[ug],
 				wallnodes[ug]/wallcpu[ug],
+				wallcpu[ug]/jobs[ug]/3600,
 				waittime[ug]/jobs[ug]/3600,
 				fullnamegroup[ug])
 			groupjobs += jobs[ug]
@@ -405,13 +411,13 @@ BEGIN {
 		# Print out total usage
 		totalusers = "Number of users: " usercount
 		printf(format, "TOTAL", "(All)", totaljobs, wallnodehours, 100,
-			totalnodesaverage, nodesaverage, totalwaitaverage/3600, totalusers)
+			totalnodesaverage, nodesaverage, totalwallaverage/3600, totalwaitaverage/3600, totalusers)
 		# Print out group usage
 		if (length(groupselect) > 0 && groupjobs > 0 && wallnodehours > 0 && grouphours > 0 && groupnodes > 0)
 			printf(format,
 				"GROUP", groupselect, groupjobs, groupnodehours,
 				100*groupnodehours/wallnodehours, groupnodes/groupjobs,
-				groupnodehours/grouphours, groupwait/groupjobs/3600, "")
+				groupnodehours/grouphours, grouphours/groupjobs, groupwait/groupjobs/3600, "")
 	} else {
 
 		# Per-group accounting
@@ -431,11 +437,12 @@ BEGIN {
 				100*gr_wallnodes[group]/(3600*wallnodehours),
 				gr_nodes[group]/gr_jobs[group],
 				gr_wallnodes[group]/gr_wallcpu[group],
+				gr_wallcpu[group]/gr_jobs[group]/3600,
 				gr_waittime[group]/gr_jobs[group]/3600)
 		}
 			printf(format, "TOTAL", totaljobs, wallnodehours, 100,
-				nodesaverage, totalnodesaverage,
-			totalwaitaverage/3600)
+				totalnodesaverage, nodesaverage,
+				totalwallaverage/3600, totalwaitaverage/3600)
 	}
 		
 } ' | env LC_ALL=C sort -r -n -k $SORTCOLUMN -k 3 -k 1d >> $REPORT
