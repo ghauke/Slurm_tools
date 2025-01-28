@@ -115,7 +115,7 @@ while getopts "p:u:g:s:e:r:m:W:cywlGhnt" options; do
 			;;
 		n )     export printheader=0
 			;;
-		t )     export tresgrp=1                                                                                                                                               
+		t )     export tresgpu=1                                                                                                                                               
 			;;
 		h|? ) usage
 			exit 1;;
@@ -194,19 +194,20 @@ selection=""
 if test $printheader -gt 0
 then
 	# Print a sreport header (overwrite any existing file)
+	# Print all TRES if statistics are shown for the whole cluster
 	if test $tresgpu -gt 0
 	then
-		# Print all TRES is statistics are shown for the whole cluster
 		if test -n "$partition"
 		then
-			sreport cluster utilization start=$start_time end=$end_time -t perhour Format=Cluster,Allocated,Idle,Planned,PlannedDown,Down,Reported,TresCount,TresName --tres=ALL  > $REPORT
+			tres="gres/gpu"
 		else
-			sreport cluster utilization start=$start_time end=$end_time -t perhour Format=Cluster,Allocated,Idle,Planned,PlannedDown,Down,Reported,TresCount,TresName --tres=gres/gpu  > $REPORT
+			tres="ALL"
 		fi
 	else
-			sreport cluster utilization start=$start_time end=$end_time -t perhour Format=Cluster,Allocated,Idle,Planned,PlannedDown,Down,Reported,TresCount,TresName --tres=gres/gpu  > $REPORT
-		sreport cluster utilization start=$start_time end=$end_time -t percent Format=Cluster,Allocated,Idle,Planned,PlannedDown,Down,Reported  > $REPORT
+		tres=""
+		timeformat="percent"
 	fi
+	sreport cluster utilization start=$start_time end=$end_time -t ${timeformat:-hourper} Format=Cluster,Allocated,Planned,Idle,PlannedDown,Down,Reported${tres:+,TresName} ${tres:+--tres="$tres"}  > $REPORT
 fi
 
 # Request of a specific partition
