@@ -49,7 +49,6 @@ export ALLGROUPS=0
 export SORTCOLUMN=5
 export printheader=1
 export month="last"
-export tresgpu=0
 
 # Process options
 while getopts "p:u:g:s:e:r:m:W:cywlGhnt" options; do
@@ -115,7 +114,7 @@ while getopts "p:u:g:s:e:r:m:W:cywlGhnt" options; do
 			;;
 		n )     export printheader=0
 			;;
-		t )     export tresgpu=1                                                                                                                                               
+		t )     export tresgpu=1
 			;;
 		h|? ) usage
 			exit 1;;
@@ -195,7 +194,7 @@ if test $printheader -gt 0
 then
 	# Print a sreport header (overwrite any existing file)
 	# Print all TRES if statistics are shown for the whole cluster
-	if test $tresgpu -gt 0
+	if test -n "$tresgpu"
 	then
 		if test -n "$partition"
 		then
@@ -249,9 +248,9 @@ then
 	# echo "Username    Group    #jobs       hours  Percent  #cpus  q-hours  Full name" >> $REPORT
 	# echo "--------    -----  ------- -----------  ------- ------- -------  ---------" >> $REPORT
 cat <<EOF >> $REPORT
-                             Wallclock           Energy Average   Average Average Average Average
-Username    Group    #jobs       hours  Percent    kWh  #nodes      #cpus runtime MaxTime q-hours Full name
---------    -----  ------- -----------  ------- ------- ------- --------- ------- ------- ------- ---------
+                             Wallclock           Energy Average   Average ${tresgpu:+Average }Average Average Average
+Username    Group    #jobs       hours  Percent    kWh  #nodes      #cpus ${tresgpu:+  #gpus }runtime MaxTime q-hours Full name
+--------    -----  ------- -----------  ------- ------- ------- --------- ${tresgpu:+------- }------- ------- ------- ---------
 EOF
 else
 	# Group statistics
@@ -285,20 +284,21 @@ fi
 # Report time in seconds:
 export SLURM_TIME_FORMAT="%s"
 # Request job data
-export FORMAT="JobID,User${ulen},Group${glen},Partition,AllocNodes,AllocCPUS,Submit,Eligible,Start,End,ElapsedRAW,CPUTimeRAW,State,ConsumedEnergyRaw,WorkDir,TimelimitRaw"
+export FORMAT="JobID,User${ulen},Group${glen},Partition,AllocNodes,AllocCPUS,Submit,Eligible,Start,End,ElapsedRAW,CPUTimeRAW,State,ConsumedEnergyRaw,WorkDir,TimelimitRaw,ReqTRES"
 # Request job states: CAncelled, ReQueued, CompleteD, Failed, TimeOut, PReempted, Out_Of_Memory
 export STATE="ca,rq,cd,f,to,pr,oom"
 
 # Get Slurm individual job accounting records using the "sacct" command
 # The "-a" flag was removed 04-Jan-2023
 # -X: Only show statistics relevant to the job allocation itself, not taking steps into consideration.
-sacct $selection -np -X -S $start_time -E $end_time -o $FORMAT -s $STATE | awk -F"|" '
+sacct $selection -np -X -S $start_time -E $end_time -o $FORMAT -s $STATE | awk -v tresgpu="$tresgpu" -F"|" '
 BEGIN {
 	userselect=ENVIRON["username"]
 	groupselect=ENVIRON["groupname"]
 	ALLGROUPS=ENVIRON["ALLGROUPS"]
 	workdir=ENVIRON["workdir"]
 	totaljobs=0
+	totalreqgpu=0
 	giga=1000000000
 	# Maximum possible node power
 	maxpower = 5000
@@ -343,7 +343,14 @@ BEGIN {
 	power = joules / elapsed
 	if (power > maxpower) joules = 0
 	jobworkdir	= $15	# Job working directory
-	jobtimelimit    = $16   # Job time limit in minutes
+	jobtimelimit	= $16	# Job time limit in minutes
+	jobreqtres	= $17	# Requestes TRES
+
+# Parse requested TRES data and save requested GPU amount
+# Example: (add single quotes aroung {} after awk) - sums all gpu res, but not necessary, as slurm summarizes it already with gres/gpu
+# echo "billing=72,cpu=72,gres/gpu=1,gres/gpu:a100=2,gres/gpu:l40s=8,mem=245000M,node=3" | awk {n = split($0,a,","); gpus = 0; for (i in a) {match(a[i], /gres\/gpu[a-z,:,[:digit:]]*=([[:digit:]]+)/,g);gpus+=g[1]}; print gpus}
+	match(jobreqtres, /gres\/gpu=([[:digit:]]+)/,a)
+	jobreqgpu = a[1]
 
 	jobnodes = nodect
 	# For accounting by number of CPU cores in stead of number of nodes,
@@ -358,6 +365,7 @@ BEGIN {
 	wallsecs += wall
 	totalnodes += jobnodes
 	totaltimelimit += jobtimelimit
+	totalreqgpu += jobreqgpu
 
 	# Check if this job matches selection criteria
 	if (userselect != "" && user != userselect) next
@@ -378,6 +386,7 @@ BEGIN {
 	waittime[user,group] += wait
 	nodes[user,group] += jobnodes
 	timelimit[user,group] += jobtimelimit
+	reqgpu[user,group] += jobreqgpu
 
 	# Group accounting
 	groupname[group]=group
@@ -390,6 +399,7 @@ BEGIN {
 	gr_waittime[group] += wait
 	gr_nodes[group] += jobnodes
 	gr_timelimit[group] += jobtimelimit
+	gr_reqgpu[group] += jobreqgpu
 	groupjoulesused[group] += joules
 	totaljoules += joules
 } END {
@@ -399,12 +409,14 @@ BEGIN {
 		totalwallaverage = wallsecs/totaljobs
 		totaltimelimitaverage = totaltimelimit/totaljobs
 		totalnodesaverage = totalnodes/totaljobs
+		totalreqgpuaverage = totalreqgpu/totaljobs
 	}
 	else {
 		totalwaitaverage = 0
 		totalwallaverage = 0
 		totaltimelimitaverage = 0
 		totalnodesaverage = 0
+		totalreqgpu = 0
 	}
 	if (wallsecs > 0)
 		nodesaverage = wallnodesecs/wallsecs
@@ -423,7 +435,10 @@ BEGIN {
 	if (ALLGROUPS == 0) {
 
 		# Print format
-		format = "%8.8s %8.8s %8d  %10.1f  %7.2f %7.0f %7.2f %9.2f %7.2f %7.2f %7.2f  %s\n"
+		if (tresgpu > 0)
+			format = "%8.8s %8.8s %8d  %10.1f  %7.2f %7.0f %7.2f %9.2f %7.2f %7.2f %7.2f %7.2f  %s\n"
+		else
+			format = "%8.8s %8.8s %8d  %10.1f  %7.2f %7.0f %7.2f %9.2f %7.2f %7.2f %7.2f  %s\n"
 		groupjobs = 0
 		groupnodes = 0
 		grouphours = 0
@@ -432,20 +447,35 @@ BEGIN {
 		for (ug in usernamegroup) {
 			if (length(groupselect) > 0 && usergroup[ug] != groupselect) continue
 			if (wallnodehours > 0 && jobs[ug] > 0 && wallcpu[ug] > 0)
-				printf(format, usernamegroup[ug], usergroup[ug],
-				jobs[ug], 
-				wallnodes[ug]/3600, 
-				100*wallnodes[ug]/(wallnodehours*3600),
-				joulesused[ug]/kWh,
-				nodes[ug]/jobs[ug],
-				wallnodes[ug]/wallcpu[ug],
-				wallcpu[ug]/jobs[ug]/3600,
-				timelimit[ug]/jobs[ug]/60,
-				waittime[ug]/jobs[ug]/3600,
-				fullnamegroup[ug])
+				if (tresgpu > 0)
+					printf(format, usernamegroup[ug], usergroup[ug],
+					jobs[ug],
+					wallnodes[ug]/3600,
+					100*wallnodes[ug]/(wallnodehours*3600),
+					joulesused[ug]/kWh,
+					nodes[ug]/jobs[ug],
+					wallnodes[ug]/wallcpu[ug],
+					reqgpu[ug]/jobs[ug],
+					wallcpu[ug]/jobs[ug]/3600,
+					timelimit[ug]/jobs[ug]/60,
+					waittime[ug]/jobs[ug]/3600,
+					fullnamegroup[ug])
+				else
+					printf(format, usernamegroup[ug], usergroup[ug],
+						jobs[ug],
+						wallnodes[ug]/3600,
+						100*wallnodes[ug]/(wallnodehours*3600),
+						joulesused[ug]/kWh,
+						nodes[ug]/jobs[ug],
+						wallnodes[ug]/wallcpu[ug],
+						wallcpu[ug]/jobs[ug]/3600,
+						timelimit[ug]/jobs[ug]/60,
+						waittime[ug]/jobs[ug]/3600,
+						fullnamegroup[ug])
 			groupjobs += jobs[ug]
 			groupnodes += nodes[ug]
 			groupnodehours += wallnodes[ug]/3600
+			groupreqgpu += reqgpu[ug]
 			grouphours += wallcpu[ug]/3600
 			grouptimelimit += timelimit[ug]/60
 			groupwait += waittime[ug]
@@ -454,41 +484,78 @@ BEGIN {
 		}
 		# Print out total usage
 		totalusers = "Number of users: " usercount
-		printf(format, "TOTAL", "(All)", totaljobs, wallnodehours, 100, totaljoules/kWh,
-			totalnodesaverage, nodesaverage, totalwallaverage/3600, totaltimelimitaverage/60,
-			totalwaitaverage/3600, totalusers)
+		if (tresgpu > 0)
+			printf(format, "TOTAL", "(All)", totaljobs, wallnodehours, 100, totaljoules/kWh,
+				totalnodesaverage, nodesaverage, totalreqgpuaverage, totalwallaverage/3600, totaltimelimitaverage/60,
+				totalwaitaverage/3600, totalusers)
+		else
+			printf(format, "TOTAL", "(All)", totaljobs, wallnodehours, 100, totaljoules/kWh,
+				totalnodesaverage, nodesaverage, totalwallaverage/3600, totaltimelimitaverage/60,
+				totalwaitaverage/3600, totalusers)
 		# Print out group usage
 		if (length(groupselect) > 0 && groupjobs > 0 && wallnodehours > 0 && grouphours > 0)
-			printf(format,
-				"GROUP", groupselect, groupjobs, groupnodehours,
-				100*groupnodehours/wallnodehours, groupjoules/kWh,
-				groupnodes/groupjobs, groupnodehours/grouphours,
-				grouphours/groupjobs, grouptimelimit/groupjobs/60,
-				groupwait/groupjobs/3600, "")
+			if (tresgpu > 0)
+				printf(format,
+					"GROUP", groupselect, groupjobs, groupnodehours,
+					100*groupnodehours/wallnodehours, groupjoules/kWh,
+					groupnodes/groupjobs, groupnodehours/grouphours,
+					groupreqgpu/groupjobs,
+					grouphours/groupjobs, grouptimelimit/groupjobs/60,
+					groupwait/groupjobs/3600, "")
+			else
+				printf(format,
+					"GROUP", groupselect, groupjobs, groupnodehours,
+					100*groupnodehours/wallnodehours, groupjoules/kWh,
+					groupnodes/groupjobs, groupnodehours/grouphours,
+					grouphours/groupjobs, grouptimelimit/groupjobs/60,
+					groupwait/groupjobs/3600, "")
 	} else {
 
 		# Per-group accounting
 
 		# Print format
-		format = "%8s %8d  %10.1f  %7.2f %7.2f %9.2f %7.2f %7.2f %7.2f\n"
+		if (tresgpu > 0)
+			format = "%8s %8d  %10.1f  %7.2f %7.2f %9.2f %7.2f %7.2f %7.2f %7.2f\n"
+		else
+			format = "%8s %8d  %10.1f  %7.2f %7.2f %9.2f %7.2f %7.2f %7.2f\n"
 
 		# Sort arrays by element values:
 		# https://www.gnu.org/software/gawk/manual/html_node/Controlling-Scanning.html
 		PROCINFO["sorted_in"] = "@ind_num_desc"
 
 		for (group in groupname) {
-			if (gr_jobs[group] > 0 && gr_wallcpu[group] > 0) printf(format,
-				groupname[group],
-				gr_jobs[group], 
-				gr_wallnodes[group]/3600,
-				100*gr_wallnodes[group]/(3600*wallnodehours),
-				gr_nodes[group]/gr_jobs[group],
-				gr_wallnodes[group]/gr_wallcpu[group],
-				gr_wallcpu[group]/gr_jobs[group]/3600,
-				gr_timelimit[group]/gr_jobs[group]/60,
-				gr_waittime[group]/gr_jobs[group]/3600)
+			if (gr_jobs[group] > 0 && gr_wallcpu[group] > 0)
+				if (tresgpu > 0)
+					printf(format,
+						groupname[group],
+						gr_jobs[group],
+						gr_wallnodes[group]/3600,
+						100*gr_wallnodes[group]/(3600*wallnodehours),
+						gr_nodes[group]/gr_jobs[group],
+						gr_wallnodes[group]/gr_wallcpu[group],
+						gr_wallcpu[group]/gr_jobs[group]/3600,
+						gr_reqgpu[group]/gr_jobs[group],
+						gr_timelimit[group]/gr_jobs[group]/60,
+						gr_waittime[group]/gr_jobs[group]/3600)
+				else
+					printf(format,
+						groupname[group],
+						gr_jobs[group],
+						gr_wallnodes[group]/3600,
+						100*gr_wallnodes[group]/(3600*wallnodehours),
+						gr_nodes[group]/gr_jobs[group],
+						gr_wallnodes[group]/gr_wallcpu[group],
+						gr_wallcpu[group]/gr_jobs[group]/3600,
+						gr_timelimit[group]/gr_jobs[group]/60,
+						gr_waittime[group]/gr_jobs[group]/3600)
 		}
-		printf(format, "TOTAL", totaljobs, wallnodehours, 100,
+		if (tresgpu > 0)
+			printf(format, "TOTAL", totaljobs, wallnodehours, 100,
+				totalnodesaverage, nodesaverage, totalreqgpuaverage,
+				totalwallaverage/3600, totaltimelimitaverage/60,
+				totalwaitaverage/3600)
+		else
+			printf(format, "TOTAL", totaljobs, wallnodehours, 100,
 				totalnodesaverage, nodesaverage,
 				totalwallaverage/3600, totaltimelimitaverage/60,
 				totalwaitaverage/3600)
