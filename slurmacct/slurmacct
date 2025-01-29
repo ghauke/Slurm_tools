@@ -28,6 +28,7 @@ where:
 	-W directory: Print only jobs with this string in the job WorkDir
 	-r: Report name prefix
 	-n: No header information is printed
+	-P: Parsable
 	-h: Print this help information
 
 The Start_time and End_time values specify the date/time interval of
@@ -51,7 +52,7 @@ export printheader=1
 export month="last"
 
 # Process options
-while getopts "p:u:g:s:e:r:m:W:cywlGhnt" options; do
+while getopts "p:u:g:s:e:r:m:W:cywlGhntP" options; do
 	case $options in
 		p )     export partition=$OPTARG
 			echo Print only accounting in Slurm partition $OPTARG
@@ -113,6 +114,8 @@ while getopts "p:u:g:s:e:r:m:W:cywlGhnt" options; do
 			echo Copy report to $OPTARG
 			;;
 		n )     export printheader=0
+			;;
+		P )     export parsable=1
 			;;
 		t )     export tresgpu=1
 			;;
@@ -206,7 +209,7 @@ then
 		tres=""
 		timeformat="percent"
 	fi
-	sreport cluster utilization start=$start_time end=$end_time -t ${timeformat:-hourper} Format=Cluster,Allocated,Planned,Idle,PlannedDown,Down,Reported${tres:+,TresName} ${tres:+--tres="$tres"}  > $REPORT
+	sreport cluster utilization start=$start_time end=$end_time -t ${timeformat:-hourper} Format=Cluster,Allocated,Planned,Idle,PlannedDown,Down,Reported${tres:+,TresName} ${tres:+--tres="$tres"} ${parsable:+-p}  > $REPORT
 fi
 
 # Request of a specific partition
@@ -247,11 +250,16 @@ then
 	# echo "                             Wallclock          Average Average" >> $REPORT
 	# echo "Username    Group    #jobs       hours  Percent  #cpus  q-hours  Full name" >> $REPORT
 	# echo "--------    -----  ------- -----------  ------- ------- -------  ---------" >> $REPORT
+if test -n "$parsable"
+then
+	echo "Username|Group|#jobs|Wallclock hours|Percent|Average #cpus|${tresgpu:+Average #gpus|}Average runtime|Average Requested Time|Average q-hours|Full name" >> $REPORT
+else
 cat <<EOF >> $REPORT
                              Wallclock           Energy Average   Average ${tresgpu:+Average }Average Average Average
-Username    Group    #jobs       hours  Percent    kWh  #nodes      #cpus ${tresgpu:+  #gpus }runtime MaxTime q-hours Full name
+Username    Group    #jobs       hours  Percent    kWh  #nodes      #cpus ${tresgpu:+  #gpus }runtime ReqTime q-hours Full name
 --------    -----  ------- -----------  ------- ------- ------- --------- ${tresgpu:+------- }------- ------- ------- ---------
 EOF
+fi
 else
 	# Group statistics
 	echo >> $REPORT
@@ -262,9 +270,14 @@ else
 	fi
 	echo Usage sorted by top groups: >> $REPORT
 	# echo "Jobs completed/terminated between date/time $start_time and $end_time"
-	echo "                    Wallclock          Average   Average Average Average Average" >> $REPORT
-	echo "   Group    #jobs       hours  Percent  #nodes     #cpus runtime MaxTime q-hours" >> $REPORT
-	echo "   -----  ------- -----------  ------- ------- --------- ------- ------- -------" >> $REPORT
+	if test -n "$parsable"
+	then
+		echo "Group|#jobs|Wallclock hours|Percent|Average #cpus|${tresgpu:+Average #gpus|}Average runtime|Average Requested Time|Average q-hours" >> $REPORT
+	else
+		echo "                    Wallclock          Average   Average ${tresgpu:+Average }Average Average Average" >> $REPORT
+		echo "   Group    #jobs       hours  Percent  #nodes     #cpus ${tresgpu:+  #gpus }runtime ReqTime q-hours" >> $REPORT
+		echo "   -----  ------- -----------  ------- ------- --------- ${tresgpu:+------- }------- ------- -------" >> $REPORT
+	fi
 fi
 
 #####################################################################################
@@ -291,7 +304,7 @@ export STATE="ca,rq,cd,f,to,pr,oom"
 # Get Slurm individual job accounting records using the "sacct" command
 # The "-a" flag was removed 04-Jan-2023
 # -X: Only show statistics relevant to the job allocation itself, not taking steps into consideration.
-sacct $selection -np -X -S $start_time -E $end_time -o $FORMAT -s $STATE | awk -v tresgpu="$tresgpu" -F"|" '
+sacct $selection -np -X -S $start_time -E $end_time -o $FORMAT -s $STATE | awk -v parsable="$parsable" -v tresgpu="$tresgpu" -F"|" '
 BEGIN {
 	userselect=ENVIRON["username"]
 	groupselect=ENVIRON["groupname"]
@@ -439,6 +452,7 @@ BEGIN {
 			format = "%8.8s %8.8s %8d  %10.1f  %7.2f %7.0f %7.2f %9.2f %7.2f %7.2f %7.2f %7.2f  %s\n"
 		else
 			format = "%8.8s %8.8s %8d  %10.1f  %7.2f %7.0f %7.2f %9.2f %7.2f %7.2f %7.2f  %s\n"
+		if (parsable > 0) format = gensub(/\s+/,"|","G",format) "\n" #TODO
 		groupjobs = 0
 		groupnodes = 0
 		grouphours = 0
@@ -518,6 +532,7 @@ BEGIN {
 			format = "%8s %8d  %10.1f  %7.2f %7.2f %9.2f %7.2f %7.2f %7.2f %7.2f\n"
 		else
 			format = "%8s %8d  %10.1f  %7.2f %7.2f %9.2f %7.2f %7.2f %7.2f\n"
+		if (parsable > 0) format = gensub(/\s+/,"|","G",format) "\n" #TODO
 
 		# Sort arrays by element values:
 		# https://www.gnu.org/software/gawk/manual/html_node/Controlling-Scanning.html
