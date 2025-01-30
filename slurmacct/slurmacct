@@ -252,7 +252,7 @@ then
 	# echo "--------    -----  ------- -----------  ------- ------- -------  ---------" >> $REPORT
 if test -n "$parsable"
 then
-	echo "Username|Group|#jobs|Wallclock hours|Percent|Average #cpus|${tresgpu:+Average #gpus|}Average runtime|Average Requested Time|Average q-hours|Full name" >> $REPORT
+	echo "Username|Group|#jobs|Wallclock hours|Percent|Average #gpus|Average #cpus|${tresgpu:+Average #gpus|}Average runtime|Average Requested Time|Average q-hours|Full name" >> $REPORT
 else
 cat <<EOF >> $REPORT
                              Wallclock           Energy Average   Average ${tresgpu:+Average }Average Average Average
@@ -272,7 +272,7 @@ else
 	# echo "Jobs completed/terminated between date/time $start_time and $end_time"
 	if test -n "$parsable"
 	then
-		echo "Group|#jobs|Wallclock hours|Percent|Average #cpus|${tresgpu:+Average #gpus|}Average runtime|Average Requested Time|Average q-hours" >> $REPORT
+		echo "Group|#jobs|Wallclock hours|Percent|Average #gpus|Average #cpus|${tresgpu:+Average #gpus|}Average runtime|Average Requested Time|Average q-hours" >> $REPORT
 	else
 		echo "                    Wallclock          Average   Average ${tresgpu:+Average }Average Average Average" >> $REPORT
 		echo "   Group    #jobs       hours  Percent  #nodes     #cpus ${tresgpu:+  #gpus }runtime ReqTime q-hours" >> $REPORT
