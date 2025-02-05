@@ -83,9 +83,8 @@ while getopts "p:u:g:s:e:r:m:W:cywlGhntP" options; do
 		m )     echo Select month $OPTARG 
 			start_time=`date -d "1$OPTARG" +%m01%y`
 			end_time=`date -d "1$OPTARG + 1 month" +%m01%y`
-			MONTH=`date -d "1$OPTARG" +%B`
-			YEAR=`date -d "1$OPTARG" +%Y`
-			REPORT_NAME=${MONTH}_${YEAR}
+			YEARMONTH=`date -d "1$OPTARG" +%Y-%m`
+			REPORT_NAME=${YEARMONTH}
 			;;
 		c )     export start_time=`date +%m01%y`
 			export end_time=`date +%m%d%y`
@@ -133,9 +132,8 @@ shift $((OPTIND-1))
 # Test if either start_time or end_time are empty strings
 if test -z "$start_time" -o -z "$end_time"
 then
-	MONTH=`date -d "last month" +%B`
-	YEAR=`date -d "last month" +%Y`
-	REPORT_NAME=${MONTH}_${YEAR}
+	YEARMONTH=`date -d "last month" +%Y-%m`
+	REPORT_NAME=${YEARMONTH}
 	start_time=`date -d "last month" +%m01%y`
 	end_time=`date -d "last month + 1 month" +%m01%y`
 fi
@@ -182,9 +180,7 @@ fi
 # First report overall statistics including nicely formatted start/end date:
 # Change the date/time format in report header for readibility (formats in "man strftime")
 
-#REPORT=${REPORT_PREFIX}${REPORT_NAME}
-#TODO: Reformat date for better sorting by name
-REPORT=${REPORT_PREFIX}_${start_time}-${end_time}_${REPORT_NAME}
+REPORT=${REPORT_PREFIX}${REPORT_NAME}
 
 export SLURM_TIME_FORMAT="%d-%b-%Y_%R"
 
