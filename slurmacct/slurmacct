@@ -399,35 +399,21 @@ BEGIN {
 	totaltimelimit += jobtimelimit
 	totalreqgpu += jobreqgpu
 	# waiting jobs clustering
-	if (wait > (30*60)) { #TODO: invert
-		totalwait30m++
-		if (stats > 0 && wait > (60*60)) {
-			totalwait1h++
-			if (wait > (120*60)) {
-				totalwait2h++
-				if (wait > (180*60)) {
-					totalwait3h++
-					if (wait > (360*60)) {
-						totalwait6h++
-						if (wait > (720*60)) {
-							totalwait12h++
-							if (wait > (1440*60)) {
-								totalwait1d++
-								if (wait > (2880*60)) {
-									totalwait2d++
-									if (wait > (4320*60)) {
-										totalwait3d++
-										if (wait > (7200*60)) {
-											totalwait5d++
-											if (wait > (1080*60)) totalwait7d++
-										}
-									}
-								}
-							}
-						}
-					}
-				}
-			}
+	if (stats > 0) {
+		if (wait > (10080*60)) totalwait7d++
+		else if (wait > (7200*60)) totalwait5d++
+		else if (wait > (4320*60)) totalwait3d++
+		else if (wait > (2880*60)) totalwait2d++
+		else if (wait > (1440*60)) totalwait1d++
+		else if (wait > (720*60)) totalwait12h++
+		else if (wait > (360*60)) totalwait6h++
+		else if (wait > (180*60)) totalwait3h++
+		else if (wait > (120*60)) totalwait2h++
+		else if (wait > (60*60)) totalwait1h++
+		else if (wait > (30*60)) totalwait30m++
+		else {
+			totalperfectjobs++
+			perfectjobs[user,group]++
 		}
 	}
 	#allocated nodes counting
@@ -481,20 +467,7 @@ BEGIN {
 		totaltimelimitaverage = totaltimelimit/totaljobs
 		totalnodesaverage = totalnodes/totaljobs
 		totalreqgpuaverage = totalreqgpu/totaljobs
-		if (totalwait30m > 0) {
-			totalwaitingjobs = totalwait30m
-			totalperfectjobs = totaljobs-totalwaitingjobs
-			totalwait5d=totalwait5d-totalwait7d
-			totalwait3d=totalwait3d-totalwait5d-totalwait7d
-			totalwait2d=totalwait2d-totalwait3d-totalwait5d-totalwait7d
-			totalwait1d=totalwait1d-totalwait2d-totalwait3d-totalwait5d-totalwait7d
-			totalwait12h=totalwait12h-totalwait1d-totalwait2d-totalwait3d-totalwait5d-totalwait7d
-			totalwait6h=totalwait6h-totalwait12h-totalwait1d-totalwait2d-totalwait3d-totalwait5d-totalwait7d
-			totalwait3h=totalwait3h-totalwait6h-totalwait12h-totalwait1d-totalwait2d-totalwait3d-totalwait5d-totalwait7d
-			totalwait2h=totalwait2h-totalwait3h-totalwait6h-totalwait12h-totalwait1d-totalwait2d-totalwait3d-totalwait5d-totalwait7d
-			totalwait1h=totalwait1h-totalwait2h-totalwait3h-totalwait6h-totalwait12h-totalwait1d-totalwait2d-totalwait3d-totalwait5d-totalwait7d
-			totalwait30m=totalwait30m-totalwait1h-totalwait2h-totalwait3h-totalwait6h-totalwait12h-totalwait1d-totalwait2d-totalwait3d-totalwait5d-totalwait7d
-		}
+		totalwaitingjobs = totaljobs-totalperfectjobs
 	}
 	else {
 		totalwaitaverage = 0
