@@ -11,7 +11,7 @@
 function usage()
 {
 	cat <<EOF
-Usage: slurmacct [-s Start_time -e End_time | -c | -y | -w | -l | -m monthyear] [-p partition(s)] [-u username] [-g groupname] [-G] [-W workdir] [-r report-prefix] [-n] [-Q] [-h]
+Usage: slurmacct [-s Start_time -e End_time | -c | -y | -w | -l | -m monthyear] [-p partition(s)] [-u username] [-g groupname] [-G] [-W workdir] [-r report-prefix] [-n] [-Q] {-N} [-h]
 where:
 	-s Start_time [last month]: Starting time of accounting period.
 	-e End_time [last month]: End time of accounting period.
@@ -30,6 +30,7 @@ where:
 	-n: No header information is printed
 	-P: Parsable
 	-Q: Print queue (waiting times) statistics
+	-N: Print job node statistics
 	-h: Print this help information
 
 The Start_time and End_time values specify the date/time interval of
@@ -53,7 +54,7 @@ export printheader=1
 export month="last"
 
 # Process options
-while getopts "p:u:g:s:e:r:m:W:cywlGhntPQ" options; do
+while getopts "p:u:g:s:e:r:m:W:cywlGhntPQJ" options; do
 	case $options in
 		p )     export partition=$OPTARG
 			echo Print only accounting in Slurm partition $OPTARG
@@ -120,6 +121,8 @@ while getopts "p:u:g:s:e:r:m:W:cywlGhntPQ" options; do
 		t )     export tresgpu=1
 			;;
 		Q )     export stats=1
+			;;
+		N )     export nodestats=1
 			;;
 		h|? ) usage
 			exit 1;;
@@ -251,12 +254,12 @@ then
 	# echo "--------    -----  ------- -----------  ------- ------- -------  ---------" >> $REPORT
 if test -n "$parsable"
 then
-	echo "Username|Group|#jobs|Wallclock hours|Percent|Average #gpus|Average #cpus|${tresgpu:+Average #gpus|}Average runtime|Average Requested Time|Average q-hours|Full name${stats:+|Perfect Jobs|Total Waiting|TW30m|TW1h|TW2h|TW3h|TW6h|TW12h|TW1d|TW2d|TW3d|TW5d|TW7d}" >> $REPORT
+	echo "Username|Group|#jobs|Wallclock hours|Percent|Average #gpus|Average #cpus|${tresgpu:+Average #gpus|}Average runtime|Average Requested Time|Average q-hours|Full name${stats:+|Perfect Jobs|Total Waiting|TW30m|TW1h|TW2h|TW3h|TW6h|TW12h|TW1d|TW2d|TW3d|TW5d|TW7d|1 Node Jobs|2 Node Jobs|3 Node Jobs|4 Node Jobs|5 Node Jobs|6+ Node Jobs}" >> $REPORT
 else
 cat <<EOF >> $REPORT
                              Wallclock           Energy Average   Average ${tresgpu:+Average }Average Average Average
-Username    Group    #jobs       hours  Percent    kWh  #nodes      #cpus ${tresgpu:+  #gpus }runtime ReqTime q-hours Full name              ${stats:+Perfect TW     TW30m  TW1h   TW2h   TW3h   TW6h   TW12h   TW1d   TW2d   TW3d   TW5d   TW7d}
---------    -----  ------- -----------  ------- ------- ------- --------- ${tresgpu:+------- }------- ------- ------- ---------------------- ${stats:+------- ------ ------ ------ ------ ------ ------ ------ ------ ------ ------ ------ ------}
+Username    Group    #jobs       hours  Percent    kWh  #nodes      #cpus ${tresgpu:+  #gpus }runtime ReqTime q-hours Full name              ${stats:+Perfect TW     TW30m  TW1h   TW2h   TW3h   TW6h   TW12h  TW1d   TW2d   TW3d   TW5d   TW7d    1Node  2Node  3Node  4Node  5Node  6+Node}
+--------    -----  ------- -----------  ------- ------- ------- --------- ${tresgpu:+------- }------- ------- ------- ---------------------- ${stats:+------- ------ ------ ------ ------ ------ ------ ------ ------ ------ ------ ------ ------  ------ ------ ------ ------ ------ ------}
 EOF
 fi
 else
@@ -322,6 +325,12 @@ BEGIN {
 	totalwait3d=0
 	totalwait5d=0
 	totalwait7d=0
+	totalnodes1=0
+	totalnodes2=0
+	totalnodes3=0
+	totalnodes4=0
+	totalnodes5=0
+	totalnodesM=0
 	giga=1000000000
 	# Maximum possible node power
 	maxpower = 5000
@@ -390,7 +399,7 @@ BEGIN {
 	totaltimelimit += jobtimelimit
 	totalreqgpu += jobreqgpu
 	# waiting jobs clustering
-	if (wait > (30*60)) {
+	if (wait > (30*60)) { #TODO: invert
 		totalwait30m++
 		if (stats > 0 && wait > (60*60)) {
 			totalwait1h++
@@ -421,6 +430,13 @@ BEGIN {
 			}
 		}
 	}
+	#allocated nodes counting
+	if (jobnodes > 5) totalnodesM++
+	else if (jobnodes == 5) totalnodes5++
+	else if (jobnodes == 4) totalnodes4++
+	else if (jobnodes == 3) totalnodes3++
+	else if (jobnodes == 2) totalnodes2++
+	else totalnodes1++
 
 	# Check if this job matches selection criteria
 	if (userselect != "" && user != userselect) next
@@ -508,7 +524,8 @@ BEGIN {
 			format = "%8.8s %8.8s %8d  %10.1f  %7.2f %7.0f %7.2f %9.2f %7.2f %7.2f %7.2f %7.2f  %20s\n"
 		else
 			format = "%8.8s %8.8s %8d  %10.1f  %7.2f %7.0f %7.2f %9.2f %7.2f %7.2f %7.2f  %20s\n"
-		if (stats > 0) format2 = gensub(/\n$/,"","G",format) " %8d %6d %6d %6d %6d %6d %6d %6d %6d %6d %6d %6d %6d\n"
+		if (stats > 0) format2 = gensub(/\n$/,"","G",format) " %8d %6d %6d %6d %6d %6d %6d %6d %6d %6d %6d %6d %6d  %6d %6d %6d %6d %6d %6d\n" #TODO
+		if (parsable > 0) format2 = gensub(/\s+/,"|","G",format2) "\n" #TODO
 		if (parsable > 0) format = gensub(/\s+/,"|","G",format) "\n" #TODO
 		groupjobs = 0
 		groupnodes = 0
@@ -561,14 +578,16 @@ BEGIN {
 				totalwaitaverage/3600, totalusers,
 				totalperfectjobs, totalwaitingjobs,
 				totalwait30m, totalwait1h, totalwait2h, totalwait3h, totalwait6h, totalwait12h,
-				totalwait1d, totalwait2d, totalwait3d, totalwait5d, totalwait7d)
+				totalwait1d, totalwait2d, totalwait3d, totalwait5d, totalwait7d,
+				totalnodes1,totalnodes2,totalnodes3,totalnodes4,totalnodes5,totalnodesM)
 		else
 			printf(format2, "TOTAL", "(All)", totaljobs, wallnodehours, 100, totaljoules/kWh,
 				totalnodesaverage, nodesaverage, totalwallaverage/3600, totaltimelimitaverage/60,
 				totalwaitaverage/3600, totalusers,
 				totalperfectjobs, totalwaitingjobs,
 				totalwait30m, totalwait1h, totalwait2h, totalwait3h, totalwait6h, totalwait12h,
-				totalwait1d, totalwait2d, totalwait3d, totalwait5d, totalwait7d)
+				totalwait1d, totalwait2d, totalwait3d, totalwait5d, totalwait7d,
+				totalnodes1,totalnodes2,totalnodes3,totalnodes4,totalnodes5,totalnodesM)
 		# Print out group usage
 		if (length(groupselect) > 0 && groupjobs > 0 && wallnodehours > 0 && grouphours > 0)
 			if (tresgpu > 0)
