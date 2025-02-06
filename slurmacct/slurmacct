@@ -400,29 +400,82 @@ BEGIN {
 	totalreqgpu += jobreqgpu
 	# waiting jobs clustering
 	if (stats > 0) {
-		if (wait > (10080*60)) totalwait7d++
-		else if (wait > (7200*60)) totalwait5d++
-		else if (wait > (4320*60)) totalwait3d++
-		else if (wait > (2880*60)) totalwait2d++
-		else if (wait > (1440*60)) totalwait1d++
-		else if (wait > (720*60)) totalwait12h++
-		else if (wait > (360*60)) totalwait6h++
-		else if (wait > (180*60)) totalwait3h++
-		else if (wait > (120*60)) totalwait2h++
-		else if (wait > (60*60)) totalwait1h++
-		else if (wait > (30*60)) totalwait30m++
-		else {
+		if (wait > (10080*60)) {
+			totalwait7d++
+			wait7d[user,group]++
+			gr_wait7d[group]++
+		} else if (wait > (7200*60)) {
+			totalwait5d++
+			wait5d[user,group]++
+			gr_wait5d[group]++
+		} else if (wait > (4320*60)) {
+			totalwait3d++
+			wait3d[user,group]++
+			gr_wait3d[group]++
+		} else if (wait > (2880*60)) {
+			totalwait2d++
+			wait2d[user,group]++
+			gr_wait2d[group]++
+		} else if (wait > (1440*60)) {
+			totalwait1d++
+			wait1d[user,group]++
+			gr_wait1d[group]++
+		} else if (wait > (720*60)) {
+			totalwait12h++
+			wait12h[user,group]++
+			gr_wait12h[group]++
+		} else if (wait > (360*60)) {
+			totalwait6h++
+			wait6h[user,group]++
+			gr_wait6h[group]++
+		} else if (wait > (180*60)) {
+			totalwait3h++
+			wait3h[user,group]++
+			gr_wait3h[group]++
+		} else if (wait > (120*60)) {
+			totalwait2h++
+			wait2h[user,group]++
+			gr_wait2h[group]++
+		} else if (wait > (60*60)) {
+			totalwait1h++
+			wait1h[user,group]++
+			gr_wait1h[group]++
+		} else if (wait > (30*60)) {
+			totalwait30m++
+			wait30m[user,group]++
+			gr_wait30m[group]++
+		} else {
 			totalperfectjobs++
 			perfectjobs[user,group]++
+			gr_perfectjobs[group]++
 		}
 	}
 	#allocated nodes counting
-	if (jobnodes > 5) totalnodesM++
-	else if (jobnodes == 5) totalnodes5++
-	else if (jobnodes == 4) totalnodes4++
-	else if (jobnodes == 3) totalnodes3++
-	else if (jobnodes == 2) totalnodes2++
-	else totalnodes1++
+	if (jobnodes > 5) {
+		totalnodesM++
+		nodesM[user,group]++
+		gr_nodesM[group]++
+	} else if (jobnodes == 5) {
+		totalnodes5++
+		nodes5[user,group]++
+		gr_nodes5[group]++
+	} else if (jobnodes == 4) {
+		totalnodes4++
+		nodes4[user,group]++
+		gr_nodes4[group]++
+	} else if (jobnodes == 3) {
+		totalnodes3++
+		nodes3[user,group]++
+		gr_nodes3[group]++
+	} else if (jobnodes == 2) {
+		totalnodes2++
+		nodes2[user,group]++
+		gr_nodes2[group]++
+	} else {
+		totalnodes1++
+		nodes1[user,group]++
+		gr_nodes1[group]++
+	}
 
 	# Check if this job matches selection criteria
 	if (userselect != "" && user != userselect) next
@@ -497,8 +550,7 @@ BEGIN {
 			format = "%8.8s %8.8s %8d  %10.1f  %7.2f %7.0f %7.2f %9.2f %7.2f %7.2f %7.2f %7.2f  %20s\n"
 		else
 			format = "%8.8s %8.8s %8d  %10.1f  %7.2f %7.0f %7.2f %9.2f %7.2f %7.2f %7.2f  %20s\n"
-		if (stats > 0) format2 = gensub(/\n$/,"","G",format) " %8d %6d %6d %6d %6d %6d %6d %6d %6d %6d %6d %6d %6d  %6d %6d %6d %6d %6d %6d\n" #TODO
-		if (parsable > 0) format2 = gensub(/\s+/,"|","G",format2) "\n" #TODO
+		if (stats > 0) format = gensub(/\n$/,"","G",format) " %8d %6d %6d %6d %6d %6d %6d %6d %6d %6d %6d %6d %6d  %6d %6d %6d %6d %6d %6d\n" #TODO separate Q and N parameter
 		if (parsable > 0) format = gensub(/\s+/,"|","G",format) "\n" #TODO
 		groupjobs = 0
 		groupnodes = 0
@@ -520,7 +572,12 @@ BEGIN {
 					wallcpu[ug]/jobs[ug]/3600,
 					timelimit[ug]/jobs[ug]/60,
 					waittime[ug]/jobs[ug]/3600,
-					fullnamegroup[ug])
+					fullnamegroup[ug],
+					perfectjobs[ug],
+					jobs[ug]-perfectjobs[ug],
+					wait30m[ug], wait1h[ug], wait2h[ug], wait3h[ug], wait6h[ug], wait12h[ug],
+					wait1d[ug], wait2d[ug], wait3d[ug], wait5d[ug], wait7d[ug],
+					nodes1[ug],nodes2[ug],nodes3[ug],nodes4[ug],nodes5[ug],nodesM[ug])
 				else
 					printf(format, usernamegroup[ug], usergroup[ug],
 						jobs[ug],
@@ -532,7 +589,12 @@ BEGIN {
 						wallcpu[ug]/jobs[ug]/3600,
 						timelimit[ug]/jobs[ug]/60,
 						waittime[ug]/jobs[ug]/3600,
-						fullnamegroup[ug])
+						fullnamegroup[ug]i,
+						perfectjobs[ug],
+						jobs[ug]-perfectjobs[ug],
+						wait30m[ug], wait1h[ug], wait2h[ug], wait3h[ug], wait6h[ug], wait12h[ug],
+						wait1d[ug], wait2d[ug], wait3d[ug], wait5d[ug], wait7d[ug],
+						nodes1[ug],nodes2[ug],nodes3[ug],nodes4[ug],nodes5[ug],nodesM[ug])
 			groupjobs += jobs[ug]
 			groupnodes += nodes[ug]
 			groupnodehours += wallnodes[ug]/3600
@@ -546,7 +608,7 @@ BEGIN {
 		# Print out total usage
 		totalusers = "Number of users: " usercount
 		if (tresgpu > 0)
-			printf(format2, "TOTAL", "(All)", totaljobs, wallnodehours, 100, totaljoules/kWh,
+			printf(format, "TOTAL", "(All)", totaljobs, wallnodehours, 100, totaljoules/kWh,
 				totalnodesaverage, nodesaverage, totalreqgpuaverage, totalwallaverage/3600, totaltimelimitaverage/60,
 				totalwaitaverage/3600, totalusers,
 				totalperfectjobs, totalwaitingjobs,
@@ -554,7 +616,7 @@ BEGIN {
 				totalwait1d, totalwait2d, totalwait3d, totalwait5d, totalwait7d,
 				totalnodes1,totalnodes2,totalnodes3,totalnodes4,totalnodes5,totalnodesM)
 		else
-			printf(format2, "TOTAL", "(All)", totaljobs, wallnodehours, 100, totaljoules/kWh,
+			printf(format, "TOTAL", "(All)", totaljobs, wallnodehours, 100, totaljoules/kWh,
 				totalnodesaverage, nodesaverage, totalwallaverage/3600, totaltimelimitaverage/60,
 				totalwaitaverage/3600, totalusers,
 				totalperfectjobs, totalwaitingjobs,
@@ -606,7 +668,12 @@ BEGIN {
 						gr_wallcpu[group]/gr_jobs[group]/3600,
 						gr_reqgpu[group]/gr_jobs[group],
 						gr_timelimit[group]/gr_jobs[group]/60,
-						gr_waittime[group]/gr_jobs[group]/3600)
+						gr_waittime[group]/gr_jobs[group]/3600,
+						gr_perfectjobs[group],
+						gr_jobs[group]-gr_perfectjobs[group],
+						gr_wait30m[group], gr_wait1h[group], gr_wait2h[group], gr_wait3h[group], gr_wait6h[group], gr_wait12h[group],
+						gr_wait1d[group], gr_wait2d[group], gr_wait3d[group], gr_wait5d[group], gr_wait7d[group],
+						gr_nodes1[group],gr_nodes2[group],gr_nodes3[group],gr_nodes4[group],gr_nodes5[group],gr_nodesM[group])
 				else
 					printf(format,
 						groupname[group],
@@ -617,7 +684,12 @@ BEGIN {
 						gr_wallnodes[group]/gr_wallcpu[group],
 						gr_wallcpu[group]/gr_jobs[group]/3600,
 						gr_timelimit[group]/gr_jobs[group]/60,
-						gr_waittime[group]/gr_jobs[group]/3600)
+						gr_waittime[group]/gr_jobs[group]/3600,
+						gr_perfectjobs[group],
+						gr_jobs[group]-gr_perfectjobs[group],
+						gr_wait30m[group], gr_wait1h[group], gr_wait2h[group], gr_wait3h[group], gr_wait6h[group], gr_wait12h[group],
+						gr_wait1d[group], gr_wait2d[group], gr_wait3d[group], gr_wait5d[group], gr_wait7d[group],
+						gr_nodes1[group],gr_nodes2[group],gr_nodes3[group],gr_nodes4[group],gr_nodes5[group],gr_nodesM[group])
 		}
 		if (tresgpu > 0)
 			printf(format, "TOTAL", totaljobs, wallnodehours, 100,
